@@ -1,5 +1,9 @@
 import { db } from "../database";
-import { packageDistribution } from "../services/orderServices";
+import { packageDistribution } from "../utils/orderUtil";
+
+const findCost = (weight: number, couriers: any) => {
+  return couriers.find((c: any) => weight > c.lower && weight <= c.upper)?.cost;
+};
 
 export const placeOrder = async ({ body }: any) => {
   const { ids } = body;
@@ -8,20 +12,25 @@ export const placeOrder = async ({ body }: any) => {
       id: { in: ids },
     },
   });
+  const couriers = await db.couriers.findMany();
 
   const totalPrice = items.reduce((sum, item) => sum + item.price, 0);
-  if (totalPrice <= 250) return [items];
+  if (totalPrice <= 250) {
+    const totalWeight = items.reduce((sum, item) => sum + item.weight, 0);
+    const courierCost = findCost(totalWeight, couriers);
+    const response = {
+      courier_cost: courierCost,
+      items: items,
+    };
+    return [response];
+  }
 
   const packages = packageDistribution(items);
 
-  const couriers = await db.couriers.findMany();
-
-  // add courier cost properties to packages 
+  // add courier cost properties to packages
   const response = packages.map((p) => {
     const totalWeight = p.reduce((sum, item) => sum + item.weight, 0);
-    const courierCost = couriers.find(
-      (c) => totalWeight > c.lower && totalWeight <= c.upper
-    )?.cost;
+    const courierCost = findCost(totalWeight, couriers);
 
     return {
       courier_cost: courierCost,
